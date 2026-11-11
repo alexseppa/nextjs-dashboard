@@ -3,10 +3,28 @@
 import postgres from 'postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { signIn, signOut } from '@/auth';
+import { AuthError } from 'next-auth';
 
 const sql = postgres(process.env.POSTGRES_URL!, {
   ssl: 'require',
 });
+
+export async function authenticate(_prevState: string | undefined, formData: FormData) {
+  try {
+    await signIn('credentials', formData);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      if (error.type === 'CredentialsSignin') return 'Invalid email or password.';
+      return 'Could not sign you in. Please try again.';
+    }
+    throw error;
+  }
+}
+
+export async function logout() {
+  await signOut({ redirectTo: '/' });
+}
 
 export async function createInvoice(formData: FormData) {
   const customerId = formData.get('customerId') as string;
@@ -21,7 +39,8 @@ export async function createInvoice(formData: FormData) {
       VALUES (${customerId}, ${amount}, ${status}, ${date})
     `;
   } catch (error) {
-    return { message: 'Database Error: Failed to Create Invoice.' };
+    console.error('Database Error:', error);
+    throw new Error('Failed to create invoice.');
   }
 
   revalidatePath('/dashboard/invoices');
@@ -41,7 +60,8 @@ export async function updateInvoice(id: string, formData: FormData) {
       WHERE id = ${id}
     `;
   } catch (error) {
-    return { message: 'Database Error: Failed to Update Invoice.' };
+    console.error('Database Error:', error);
+    throw new Error('Failed to update invoice.');
   }
 
   revalidatePath('/dashboard/invoices');
@@ -52,8 +72,8 @@ export async function deleteInvoice(id: string) {
   try {
     await sql`DELETE FROM invoices WHERE id = ${id}`;
     revalidatePath('/dashboard/invoices');
-    return { message: 'Deleted Invoice.' };
   } catch (error) {
-    return { message: 'Database Error: Failed to Delete Invoice.' };
+    console.error('Database Error:', error);
+    throw new Error('Failed to delete invoice.');
   }
 }
